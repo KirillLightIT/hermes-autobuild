@@ -1,0 +1,153 @@
+---
+  - name: Install Hermes
+    hosts: localhost
+    connection: local
+    vars:
+        USER: "hermes"
+        HERMES_HOME_DIR: "/home/{{ USER }}"
+        HERMES_REPO_KEY_NAME: "id_rsa"
+        HERMES_GIT_REPO_DIR: "{{ HERMES_HOME_DIR }}/hermes"
+        HERMES_GIT_REPO: "git@github.com:weklica/RT_Hermes.git"
+        HERMES_GIT_BRANCH: "dev_v0.2_studies"
+        DB_NAME: "hermes"
+        DB_USER: "hermes"
+        DB_PASSWORD: "hermes!"
+        DB_REDASH_USER: "redash"
+        DB_REDASH_PASSWORD: "redash"
+        HERMES_BOOKEEPER_CONF: "PORT=8080\nHOST=0.0.0.0\nDATABASE_URL=postgresql://{{ DB_USER }}:{{ DB_PASSWORD }}@localhost\n"
+        WEBGUI_SECRET_KEY: "{{ lookup('password', 'maxlengh=15') }}"
+        HERMES_WEBGUI_CONF: "SECRET_KEY={{ WEBGUI_SECRET_KEY }}\nPORT=8000\nHOST=0.0.0.0\n"
+    tasks:
+      - name: Create user
+        user:
+          name: "{{ USER }}"
+          shell: /bin/bash
+          state: present
+      - name: Add github to known hosts
+        lineinfile:
+          dest: "{{ HERMES_HOME_DIR }}/.ssh/known_hosts"
+          create: yes
+          state: present
+          line: "{{ lookup('pipe', 'ssh-keyscan -t rsa github.com') }}"
+          regexp: "^github\\.com"
+        become: yes
+        become_user: "{{ USER }}"
+      - name: Copy ssh key
+        copy: 
+          src: "{{ HERMES_REPO_KEY_NAME }}"
+          dest: "{{ HERMES_HOME_DIR }}/.ssh/id_rsa"
+          mode: 0600
+        become: yes
+        become_user: "{{ USER }}"
+      - name: Cloning the repo
+        git:
+          repo: "{{ HERMES_GIT_REPO }}"
+          dest: "{{ HERMES_GIT_REPO_DIR }}"
+          version: "{{ HERMES_GIT_BRANCH }}"
+          key_file: /home/hermes/.ssh/id_rsa
+        become: yes
+        become_user: hermes
+      - name: Install hermes
+        shell: cd "{{ HERMES_GIT_REPO_DIR }}/installation" && /bin/bash install.sh
+        become: yes
+        become_user: hermes
+      - name: Copy service files
+        copy: 
+          src: "{{ HERMES_GIT_REPO_DIR }}/installation/{{ item }}.service"
+          dest: "/etc/systemd/system/{{ item }}.service"
+        with_items:
+          - "hermes_bookkeeper"
+          - "hermes_cleaner"
+          - "hermes_dispatcher"
+          - "hermes_receiver"
+          - "hermes_router"
+          - "hermes_ui"
+      - name: Enable services for hermes
+        systemd:
+          enabled: yes
+          name: "{{ item }}.service"
+        with_items:
+          - "hermes_bookkeeper"
+          - "hermes_cleaner"
+          - "hermes_dispatcher"
+          - "hermes_receiver"
+          - "hermes_router"
+          - "hermes_ui"
+      - name: Make storage dirs
+        file:
+          path: "{{ HERMES_HOME_DIR }}/{{ item }}"
+          state: directory
+          mode: "0755"
+        with_items:
+          - "hermes-data"
+          - "hermes-data/incoming"
+          - "hermes-data/outgoing"
+          - "hermes-data/success"
+          - "hermes-data/error"
+          - "hermes-data/discard"
+          - "hermes-data/processing"
+        become: yes
+        become_user: hermes
+      - name: Create database
+        postgresql_db:
+          name: "{{ DB_NAME }}"
+        become: yes
+        become_user: postgres
+      - name: Create database user
+        postgresql_user:
+          db: "{{ DB_NAME }}"
+          name: "{{ DB_USER }}"
+          password: "{{ DB_PASSWORD }}"
+          priv: "ALL"
+        become: yes
+        become_user: postgres
+      - name: Create redash database user
+        postgresql_user:
+          name: "{{ DB_REDASH_USER }}"
+          password: "{{ DB_REDASH_PASSWORD }}"
+        become: yes
+        become_user: postgres
+      - name: Grant all priveleges to database for user hermes
+        postgresql_privs:
+          db: "{{ DB_NAME }}"
+          privs: ALL
+          type: database
+          role: "{{ DB_USER }}"
+        become: yes
+        become_user: postgres
+      - name: Grant select priveleges to database for user redash
+        postgresql_privs:
+          db: "{{ DB_NAME }}"
+          privs: "SELECT"
+          type: table
+          objs: ALL_IN_SCHEMA
+          role: "{{ DB_REDASH_USER }}"
+        become: yes
+        become_user: postgres
+      - name: Configure bookkeeper
+        copy: 
+          content: "{{ HERMES_BOOKEEPER_CONF }}"
+          dest: "{{ HERMES_GIT_REPO_DIR }}/configuration/bookkeeper.env"
+      - name: Configure webgui
+        copy: 
+          content: "{{ HERMES_WEBGUI_CONF }}"
+          dest: "{{ HERMES_GIT_REPO_DIR }}/configuration/webgui.env"
+      - name: Starting a services
+        systemd:
+          name: "{{ item }}.service"
+          state: started
+        with_items:
+          - "hermes_bookkeeper"
+          - "hermes_ui"
+          - "hermes_cleaner"
+          - "hermes_dispatcher"
+          - "hermes_receiver"
+          - "hermes_router"          
+      - name: Download redash install script
+        get_url:
+          url: "https://raw.githubusercontent.com/getredash/setup/master/setup.sh"
+          dest: "{{ HERMES_HOME_DIR }}/setup.sh"
+        become: yes
+        become_user: "{{ USER }}"
+      - name: Install redash
+        shell: cd "{{ HERMES_HOME_DIR }}" && /bin/bash setup.sh
