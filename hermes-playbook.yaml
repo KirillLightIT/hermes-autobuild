@@ -1,5 +1,5 @@
 ---
-  - name: Install Hermes
+  - name: Hermes Setup Tool
     hosts: localhost
     connection: local
     vars:
@@ -8,7 +8,8 @@
         HERMES_REPO_KEY_NAME: "id_rsa"
         HERMES_GIT_REPO_DIR: "{{ HERMES_HOME_DIR }}/hermes"
         HERMES_GIT_REPO: "git@github.com:weklica/RT_Hermes.git"
-        HERMES_GIT_BRANCH: "dev_v0.2_studies"
+        HERMES_GIT_BRANCH: "develop"
+        HERMES_PYTHON_ENV_DIR: "{{ HERMES_HOME_DIR }}/hermes-env"
         DB_NAME: "hermes"
         DB_USER: "hermes"
         DB_PASSWORD: "hermes!"
@@ -23,15 +24,19 @@
           name: "{{ USER }}"
           shell: /bin/bash
           state: present
+        tags:
+          - "full-install"
       - name: Add github to known hosts
         lineinfile:
           dest: "{{ HERMES_HOME_DIR }}/.ssh/known_hosts"
           create: yes
           state: present
           line: "{{ lookup('pipe', 'ssh-keyscan -t rsa github.com') }}"
-          regexp: "^github\\.com"
+          regexp: "^github\\.com"        
         become: yes
         become_user: "{{ USER }}"
+        tags:
+          - "full-install"
       - name: Copy ssh key
         copy: 
           src: "{{ HERMES_REPO_KEY_NAME }}"
@@ -39,18 +44,33 @@
           mode: 0600
         become: yes
         become_user: "{{ USER }}"
-      - name: Cloning the repo
+        tags:
+          - "full-install"
+      - name: Cloning/Update the repo
         git:
           repo: "{{ HERMES_GIT_REPO }}"
           dest: "{{ HERMES_GIT_REPO_DIR }}"
           version: "{{ HERMES_GIT_BRANCH }}"
           key_file: /home/hermes/.ssh/id_rsa
         become: yes
-        become_user: hermes
+        become_user: "{{ USER }}"
+        tags:
+          - "full-install"
+          - "update"
       - name: Install hermes
         shell: cd "{{ HERMES_GIT_REPO_DIR }}/installation" && /bin/bash install.sh
         become: yes
-        become_user: hermes
+        become_user: "{{ USER }}"
+        tags:
+          - "full-install"
+      - name: Install python packages
+        pip:
+          requirements: "{{ HERMES_GIT_REPO_DIR }}/requirements.txt"
+          executable: "{{ HERMES_PYTHON_ENV_DIR }}/bin/pip"
+        become: yes
+        become_user: "{{ USER }}"
+        tags:
+          - "update"
       - name: Copy service files
         copy: 
           src: "{{ HERMES_GIT_REPO_DIR }}/installation/{{ item }}.service"
@@ -62,6 +82,8 @@
           - "hermes_receiver"
           - "hermes_router"
           - "hermes_ui"
+        tags:
+          - "full-install"
       - name: Enable services for hermes
         systemd:
           enabled: yes
@@ -73,6 +95,8 @@
           - "hermes_receiver"
           - "hermes_router"
           - "hermes_ui"
+        tags:
+          - "full-install"
       - name: Make storage dirs
         file:
           path: "{{ HERMES_HOME_DIR }}/{{ item }}"
@@ -87,12 +111,16 @@
           - "hermes-data/discard"
           - "hermes-data/processing"
         become: yes
-        become_user: hermes
+        become_user: "{{ USER }}"
+        tags:
+          - "full-install"
       - name: Create database
         postgresql_db:
           name: "{{ DB_NAME }}"
         become: yes
         become_user: postgres
+        tags:
+          - "full-install"
       - name: Create database user
         postgresql_user:
           db: "{{ DB_NAME }}"
@@ -101,12 +129,16 @@
           priv: "ALL"
         become: yes
         become_user: postgres
+        tags:
+          - "full-install"
       - name: Create redash database user
         postgresql_user:
           name: "{{ DB_REDASH_USER }}"
           password: "{{ DB_REDASH_PASSWORD }}"
         become: yes
         become_user: postgres
+        tags:
+          - "full-install"
       - name: Grant all priveleges to database for user hermes
         postgresql_privs:
           db: "{{ DB_NAME }}"
@@ -115,6 +147,8 @@
           role: "{{ DB_USER }}"
         become: yes
         become_user: postgres
+        tags:
+          - "full-install"
       - name: Grant select priveleges to database for user redash
         postgresql_privs:
           db: "{{ DB_NAME }}"
@@ -124,14 +158,20 @@
           role: "{{ DB_REDASH_USER }}"
         become: yes
         become_user: postgres
+        tags:
+          - "full-install"
       - name: Configure bookkeeper
         copy: 
           content: "{{ HERMES_BOOKEEPER_CONF }}"
           dest: "{{ HERMES_GIT_REPO_DIR }}/configuration/bookkeeper.env"
+        tags:
+          - "full-install"
       - name: Configure webgui
         copy: 
           content: "{{ HERMES_WEBGUI_CONF }}"
           dest: "{{ HERMES_GIT_REPO_DIR }}/configuration/webgui.env"
+        tags:
+          - "full-install"
       - name: Starting a services
         systemd:
           name: "{{ item }}.service"
@@ -143,11 +183,29 @@
           - "hermes_dispatcher"
           - "hermes_receiver"
           - "hermes_router"          
+        tags:
+          - "full-install"
+      - name: Re-starting a services
+        systemd:
+          name: "{{ item }}.service"
+          state: restarted
+        with_items:
+          - "hermes_bookkeeper"
+          - "hermes_ui"
+          - "hermes_cleaner"
+          - "hermes_dispatcher"
+          - "hermes_receiver"
+          - "hermes_router"          
+        tags:
+          - "update"
+          - "restart-hermes"
       - name: Download redash install script
         get_url:
           url: "https://raw.githubusercontent.com/getredash/setup/master/setup.sh"
           dest: "{{ HERMES_HOME_DIR }}/setup.sh"
         become: yes
         become_user: "{{ USER }}"
+        tags: full_install
       - name: Install redash
         shell: cd "{{ HERMES_HOME_DIR }}" && /bin/bash setup.sh
+        tags: full_install
