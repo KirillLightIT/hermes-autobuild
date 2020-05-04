@@ -205,7 +205,9 @@
           dest: "{{ HERMES_HOME_DIR }}/setup.sh"
         become: yes
         become_user: "{{ USER }}"
-        tags: full_install
+        tags:
+          - "full-install"
       - name: Install redash
         shell: cd "{{ HERMES_HOME_DIR }}" && /bin/bash setup.sh
-        tags: full_install
+        tags:
+          - "full-install"
