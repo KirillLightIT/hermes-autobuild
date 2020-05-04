@@ -1,0 +1,7 @@
+---
+  - name: Update service list for webgui
+    copy:
+      src: "{{ HERMES_GIT_REPO_DIR }}/configuration/default_services.json"
+      dest: "{{ HERMES_GIT_REPO_DIR }}/configuration/services.json"
+    tags:
+      - "dt-update-service-list"

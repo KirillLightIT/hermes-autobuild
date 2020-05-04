@@ -57,6 +57,7 @@
         tags:
           - "full-install"
           - "update"
+          - "update-repo"
       - name: Install hermes
         shell: cd "{{ HERMES_GIT_REPO_DIR }}/installation" && /bin/bash install.sh
         become: yes
@@ -185,6 +186,7 @@
           - "hermes_router"          
         tags:
           - "full-install"
+      - include: "disposable_tasks.yaml"
       - name: Re-starting a services
         systemd:
           name: "{{ item }}.service"
@@ -210,4 +212,4 @@
       - name: Install redash
         shell: cd "{{ HERMES_HOME_DIR }}" && /bin/bash setup.sh
         tags:
-          - "full-install"
+          - "full-install"      
