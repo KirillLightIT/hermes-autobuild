@@ -129,13 +129,29 @@
           password: "{{ DB_PASSWORD }}"
           priv: "ALL"
         become: yes
-        become_user: postgres
+        become_user: "{{ USER }}"
+        tags:
+          - "full-install"
+      - name: Save db password
+        copy:
+          content: "{{ DB_PASSWORD }}"
+          dest: "{{ HERMES_HOME_DIR }}/db.pswd"
+        become: yes
+        become_user: "{{ USER }}"
         tags:
           - "full-install"
       - name: Create redash database user
         postgresql_user:
           name: "{{ DB_REDASH_USER }}"
           password: "{{ DB_REDASH_PASSWORD }}"
+        become: yes
+        become_user: postgres
+        tags:
+          - "full-install"
+      - name: Save redash db password
+        copy:
+          content: "{{ DB_REDASH_PASSWORD }}"
+          dest: "{{ HERMES_HOME_DIR }}/db_redash.pswd"
         become: yes
         become_user: postgres
         tags:
