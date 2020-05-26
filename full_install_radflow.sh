@@ -21,7 +21,7 @@ apt install -y \
 if [ -f "id_rsa" ]
 then
 	echo 'Key file found.'
-	ansible-playbook hermes-playbook.yaml --tags "full-install"
+	ansible-playbook radflow-playbook.yaml --tags "full-install"
 else
 	echo 'Key file was not found'
 	exit

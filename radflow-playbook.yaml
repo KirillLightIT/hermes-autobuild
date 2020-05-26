@@ -1,23 +1,23 @@
 ---
-  - name: Hermes Setup Tool
+  - name: RadFlow Setup Tool
     hosts: localhost
     connection: local
     vars:
-        USER: "hermes"
-        HERMES_HOME_DIR: "/home/{{ USER }}"
-        HERMES_REPO_KEY_NAME: "id_rsa"
-        HERMES_GIT_REPO_DIR: "{{ HERMES_HOME_DIR }}/hermes"
-        HERMES_GIT_REPO: "git@github.com:weklica/RT_Hermes.git"
-        HERMES_GIT_BRANCH: "develop"
-        HERMES_PYTHON_ENV_DIR: "{{ HERMES_HOME_DIR }}/hermes-env"
-        DB_NAME: "hermes"
-        DB_USER: "hermes"
-        DB_PASSWORD: "{{ lookup('password', 'maxlengh=8') }}"
+        USER: "radflow"
+        HOME_DIR: "/home/{{ USER }}"
+        REPO_KEY_NAME: "id_rsa"
+        GIT_REPO_DIR: "{{ HOME_DIR }}/radflow"
+        GIT_REPO: "git@github.com:weklica/RT_Hermes.git"
+        GIT_BRANCH: "develop"
+        PYTHON_ENV_DIR: "{{ HOME_DIR }}/radflow-env"
+        DB_NAME: "radflow"
+        DB_USER: "radflow"
+        DB_PASSWORD: "{{ lookup('password', 'db.pswd length=8') }}"
         DB_REDASH_USER: "redash"
-        DB_REDASH_PASSWORD: "{{ lookup('password', 'maxlengh=8') }}"
-        HERMES_BOOKEEPER_CONF: "PORT=8080\nHOST=0.0.0.0\nDATABASE_URL=postgresql://{{ DB_USER }}:{{ DB_PASSWORD }}@localhost\n"
-        WEBGUI_SECRET_KEY: "{{ lookup('password', 'maxlengh=15') }}"
-        HERMES_WEBGUI_CONF: "SECRET_KEY={{ WEBGUI_SECRET_KEY }}\nPORT=8000\nHOST=0.0.0.0\n"
+        DB_REDASH_PASSWORD: "{{ lookup('password', 'db_redash.pswd length=8') }}"
+        BOOKEEPER_CONF: "PORT=8080\nHOST=0.0.0.0\nDATABASE_URL=postgresql://{{ DB_USER }}:{{ DB_PASSWORD }}@localhost\n"
+        WEBGUI_SECRET_KEY: "{{ lookup('password', 'webgui.secret length=15') }}"
+        WEBGUI_CONF: "SECRET_KEY={{ WEBGUI_SECRET_KEY }}\nPORT=8000\nHOST=0.0.0.0\n"
     tasks:
       - name: Create user
         user:
@@ -28,7 +28,7 @@
           - "full-install"
       - name: Add github to known hosts
         lineinfile:
-          dest: "{{ HERMES_HOME_DIR }}/.ssh/known_hosts"
+          dest: "{{ HOME_DIR }}/.ssh/known_hosts"
           create: yes
           state: present
           line: "{{ lookup('pipe', 'ssh-keyscan -t rsa github.com') }}"
@@ -39,8 +39,8 @@
           - "full-install"
       - name: Copy ssh key
         copy: 
-          src: "{{ HERMES_REPO_KEY_NAME }}"
-          dest: "{{ HERMES_HOME_DIR }}/.ssh/id_rsa"
+          src: "{{ REPO_KEY_NAME }}"
+          dest: "{{ HOME_DIR }}/.ssh/id_rsa"
           mode: 0600
         become: yes
         become_user: "{{ USER }}"
@@ -48,69 +48,70 @@
           - "full-install"
       - name: Cloning/Update the repo
         git:
-          repo: "{{ HERMES_GIT_REPO }}"
-          dest: "{{ HERMES_GIT_REPO_DIR }}"
-          version: "{{ HERMES_GIT_BRANCH }}"
-          key_file: /home/hermes/.ssh/id_rsa
+          repo: "{{ GIT_REPO }}"
+          dest: "{{ GIT_REPO_DIR }}"
+          version: "{{ GIT_BRANCH }}"
+          key_file: "{{ HOME_DIR }}/.ssh/id_rsa"
         become: yes
         become_user: "{{ USER }}"
         tags:
           - "full-install"
           - "update"
           - "update-repo"
-      - name: Install hermes
-        shell: cd "{{ HERMES_GIT_REPO_DIR }}/installation" && /bin/bash install.sh
+      - name: Install radflow
+        shell: cd "{{ GIT_REPO_DIR }}/installation" && /bin/bash install.sh
         become: yes
         become_user: "{{ USER }}"
         tags:
           - "full-install"
       - name: Install python packages
         pip:
-          requirements: "{{ HERMES_GIT_REPO_DIR }}/requirements.txt"
-          executable: "{{ HERMES_PYTHON_ENV_DIR }}/bin/pip"
+          requirements: "{{ GIT_REPO_DIR }}/requirements.txt"
+          executable: "{{ PYTHON_ENV_DIR }}/bin/pip"
         become: yes
         become_user: "{{ USER }}"
         tags:
+          - "full-install"
           - "update"
       - name: Copy service files
         copy: 
-          src: "{{ HERMES_GIT_REPO_DIR }}/installation/{{ item }}.service"
+          src: "{{ GIT_REPO_DIR }}/installation/{{ item }}.service"
           dest: "/etc/systemd/system/{{ item }}.service"
         with_items:
-          - "hermes_bookkeeper"
-          - "hermes_cleaner"
-          - "hermes_dispatcher"
-          - "hermes_receiver"
-          - "hermes_router"
-          - "hermes_ui"
+          - "radflow_bookkeeper"
+          - "radflow_cleaner"
+          - "radflow_dispatcher"
+          - "radflow_receiver"
+          - "radflow_router"
+          - "radflow_ui"
         tags:
           - "full-install"
-      - name: Enable services for hermes
+      - name: Enable services for radflow
         systemd:
           enabled: yes
           name: "{{ item }}.service"
         with_items:
-          - "hermes_bookkeeper"
-          - "hermes_cleaner"
-          - "hermes_dispatcher"
-          - "hermes_receiver"
-          - "hermes_router"
-          - "hermes_ui"
+          - "radflow_bookkeeper"
+          - "radflow_cleaner"
+          - "radflow_dispatcher"
+          - "radflow_receiver"
+          - "radflow_router"
+          - "radflow_ui"
         tags:
           - "full-install"
       - name: Make storage dirs
         file:
-          path: "{{ HERMES_HOME_DIR }}/{{ item }}"
+          path: "{{ HOME_DIR }}/{{ item }}"
           state: directory
           mode: "0755"
         with_items:
-          - "hermes-data"
-          - "hermes-data/incoming"
-          - "hermes-data/outgoing"
-          - "hermes-data/success"
-          - "hermes-data/error"
-          - "hermes-data/discard"
-          - "hermes-data/processing"
+          - "radflow-data"
+          - "radflow-data/incoming"
+          - "radflow-data/outgoing"
+          - "radflow-data/success"
+          - "radflow-data/error"
+          - "radflow-data/discard"
+          - "radflow-data/processing"
         become: yes
         become_user: "{{ USER }}"
         tags:
@@ -120,6 +121,8 @@
           name: "{{ DB_NAME }}"
         become: yes
         become_user: postgres
+        retries: 3
+        delay: 5
         tags:
           - "full-install"
       - name: Create database user
@@ -129,13 +132,13 @@
           password: "{{ DB_PASSWORD }}"
           priv: "ALL"
         become: yes
-        become_user: "{{ USER }}"
+        become_user: postgres
         tags:
           - "full-install"
       - name: Save db password
         copy:
           content: "{{ DB_PASSWORD }}"
-          dest: "{{ HERMES_HOME_DIR }}/db.pswd"
+          dest: "{{ HOME_DIR }}/db.pswd"
         become: yes
         become_user: "{{ USER }}"
         tags:
@@ -151,12 +154,12 @@
       - name: Save redash db password
         copy:
           content: "{{ DB_REDASH_PASSWORD }}"
-          dest: "{{ HERMES_HOME_DIR }}/db_redash.pswd"
+          dest: "{{ HOME_DIR }}/db_redash.pswd"
         become: yes
-        become_user: postgres
+        become_user: "{{ USER }}"
         tags:
           - "full-install"
-      - name: Grant all priveleges to database for user hermes
+      - name: Grant all priveleges to database for user radflow
         postgresql_privs:
           db: "{{ DB_NAME }}"
           privs: ALL
@@ -179,14 +182,14 @@
           - "full-install"
       - name: Configure bookkeeper
         copy: 
-          content: "{{ HERMES_BOOKEEPER_CONF }}"
-          dest: "{{ HERMES_GIT_REPO_DIR }}/configuration/bookkeeper.env"
+          content: "{{ BOOKEEPER_CONF }}"
+          dest: "{{ GIT_REPO_DIR }}/configuration/bookkeeper.env"
         tags:
           - "full-install"
       - name: Configure webgui
         copy: 
-          content: "{{ HERMES_WEBGUI_CONF }}"
-          dest: "{{ HERMES_GIT_REPO_DIR }}/configuration/webgui.env"
+          content: "{{ WEBGUI_CONF }}"
+          dest: "{{ GIT_REPO_DIR }}/configuration/webgui.env"
         tags:
           - "full-install"
       - name: Starting a services
@@ -194,12 +197,12 @@
           name: "{{ item }}.service"
           state: started
         with_items:
-          - "hermes_bookkeeper"
-          - "hermes_ui"
-          - "hermes_cleaner"
-          - "hermes_dispatcher"
-          - "hermes_receiver"
-          - "hermes_router"          
+          - "radflow_bookkeeper"
+          - "radflow_ui"
+          - "radflow_cleaner"
+          - "radflow_dispatcher"
+          - "radflow_receiver"
+          - "radflow_router"          
         tags:
           - "full-install"
       - include: "disposable_tasks.yaml"
@@ -208,24 +211,24 @@
           name: "{{ item }}.service"
           state: restarted
         with_items:
-          - "hermes_bookkeeper"
-          - "hermes_ui"
-          - "hermes_cleaner"
-          - "hermes_dispatcher"
-          - "hermes_receiver"
-          - "hermes_router"          
+          - "radflow_bookkeeper"
+          - "radflow_ui"
+          - "radflow_cleaner"
+          - "radflow_dispatcher"
+          - "radflow_receiver"
+          - "radflow_router"          
         tags:
           - "update"
-          - "restart-hermes"
+          - "restart-radflow"
       - name: Download redash install script
         get_url:
           url: "https://raw.githubusercontent.com/getredash/setup/master/setup.sh"
-          dest: "{{ HERMES_HOME_DIR }}/setup.sh"
+          dest: "{{ HOME_DIR }}/setup.sh"
         become: yes
         become_user: "{{ USER }}"
         tags:
           - "full-install"
       - name: Install redash
-        shell: cd "{{ HERMES_HOME_DIR }}" && /bin/bash setup.sh
+        shell: cd "{{ HOME_DIR }}" && /bin/bash setup.sh
         tags:
           - "full-install"      
