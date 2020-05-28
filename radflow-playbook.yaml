@@ -83,6 +83,7 @@
           - "radflow_dispatcher"
           - "radflow_receiver"
           - "radflow_router"
+          - "radflow_processor"
           - "radflow_ui"
         tags:
           - "full-install"
@@ -96,6 +97,7 @@
           - "radflow_dispatcher"
           - "radflow_receiver"
           - "radflow_router"
+          - "radflow_processor"
           - "radflow_ui"
         tags:
           - "full-install"
@@ -112,6 +114,7 @@
           - "radflow-data/error"
           - "radflow-data/discard"
           - "radflow-data/processing"
+          - "radflow-data/studies"
         become: yes
         become_user: "{{ USER }}"
         tags:
@@ -203,6 +206,7 @@
           - "radflow_dispatcher"
           - "radflow_receiver"
           - "radflow_router"          
+          - "radflow_processor"
         tags:
           - "full-install"
       - include: "disposable_tasks.yaml"
@@ -216,7 +220,8 @@
           - "radflow_cleaner"
           - "radflow_dispatcher"
           - "radflow_receiver"
-          - "radflow_router"          
+          - "radflow_router"
+          - "radflow_processor"
         tags:
           - "update"
           - "restart-radflow"
