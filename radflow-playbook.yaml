@@ -209,6 +209,18 @@
           - "radflow_processor"
         tags:
           - "full-install"
+      - name: Migration DB
+        shell: 
+          chdir: "{{ GIT_REPO_DIR }}"
+          cmd: "{{ PYTHON_ENV_DIR }}/bin/alembic upgrade head"
+          environment:
+            PYTHONPATH: "{{ GIT_REPO_DIR }}"
+          become: yes
+          become_user: "{{ USER }}"
+          tags:
+            - "full-install"
+            - "update"
+            - "migrate"
       - include: "disposable_tasks.yaml"
       - name: Re-starting a services
         systemd:
