@@ -73,6 +73,7 @@
         tags:
           - "full-install"
           - "update"
+          - "update-packages"
       - name: Copy service files
         copy: 
           src: "{{ GIT_REPO_DIR }}/installation/{{ item }}.service"
@@ -195,6 +196,18 @@
           dest: "{{ GIT_REPO_DIR }}/configuration/webgui.env"
         tags:
           - "full-install"
+      - name: Migration DB
+        shell: 
+          chdir: "{{ GIT_REPO_DIR }}"
+          cmd: "{{ PYTHON_ENV_DIR }}/bin/alembic upgrade head"
+        environment:
+          PYTHONPATH: "{{ GIT_REPO_DIR }}"
+        become: yes
+        become_user: "{{ USER }}"
+        tags:
+          - "full-install"
+          - "update"
+          - "migrate"
       - name: Starting a services
         systemd:
           name: "{{ item }}.service"
@@ -208,19 +221,7 @@
           - "radflow_router"          
           - "radflow_processor"
         tags:
-          - "full-install"
-      - name: Migration DB
-        shell: 
-          chdir: "{{ GIT_REPO_DIR }}"
-          cmd: "{{ PYTHON_ENV_DIR }}/bin/alembic upgrade head"
-          environment:
-            PYTHONPATH: "{{ GIT_REPO_DIR }}"
-          become: yes
-          become_user: "{{ USER }}"
-          tags:
-            - "full-install"
-            - "update"
-            - "migrate"
+          - "full-install"      
       - include: "disposable_tasks.yaml"
       - name: Re-starting a services
         systemd:
@@ -248,4 +249,4 @@
       - name: Install redash
         shell: cd "{{ HOME_DIR }}" && /bin/bash setup.sh
         tags:
-          - "full-install"      
+          - "full-install"
