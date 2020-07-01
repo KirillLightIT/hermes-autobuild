@@ -18,6 +18,7 @@
         BOOKEEPER_CONF: "PORT=8080\nHOST=0.0.0.0\nDATABASE_URL=postgresql://{{ DB_USER }}:{{ DB_PASSWORD }}@localhost\n"
         WEBGUI_SECRET_KEY: "{{ lookup('password', 'webgui.secret length=15') }}"
         WEBGUI_CONF: "SECRET_KEY={{ WEBGUI_SECRET_KEY }}\nPORT=8000\nHOST=0.0.0.0\n"
+        CELERY_CONF: "REDIS_HOST=127.0.0.1\nREDIS_PORT=6379\nREDIS_BROKER_DB=1\n"
     tasks:
       - name: Create user
         user:
@@ -86,6 +87,8 @@
           - "radflow_router"
           - "radflow_processor"
           - "radflow_ui"
+          - "radflow_celery_worker"
+          - "radflow_celery_beat"
         tags:
           - "full-install"
       - name: Enable services for radflow
@@ -100,6 +103,8 @@
           - "radflow_router"
           - "radflow_processor"
           - "radflow_ui"
+          - "radflow_celery_worker"
+          - "radflow_celery_beat"
         tags:
           - "full-install"
       - name: Make storage dirs
@@ -196,6 +201,12 @@
           dest: "{{ GIT_REPO_DIR }}/configuration/webgui.env"
         tags:
           - "full-install"
+      - name: Configure celery
+        copy: 
+          content: "{{ CELERY_CONF }}"
+          dest: "{{ GIT_REPO_DIR }}/configuration/celery.env"
+        tags:
+          - "full-install"
       - name: Migration DB
         shell: 
           chdir: "{{ GIT_REPO_DIR }}"
@@ -220,6 +231,8 @@
           - "radflow_receiver"
           - "radflow_router"          
           - "radflow_processor"
+          - "radflow_celery_worker"
+          - "radflow_celery_beat"
         tags:
           - "full-install"      
       - include: "disposable_tasks.yaml"
@@ -235,6 +248,8 @@
           - "radflow_receiver"
           - "radflow_router"
           - "radflow_processor"
+          - "radflow_celery_worker"
+          - "radflow_celery_beat"
         tags:
           - "update"
           - "restart-radflow"

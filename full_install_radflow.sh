@@ -13,6 +13,7 @@ apt install -y \
 	postgresql \
 	postgresql-contrib \
 	python-psycopg2 \
+	redis \
 	ansible \
 	mc \
 	tmux
