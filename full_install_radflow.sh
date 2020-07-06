@@ -16,7 +16,9 @@ apt install -y \
 	redis \
 	ansible \
 	mc \
-	tmux
+	tmux \
+	nodejs \
+	npm
 
 # Install hermes
 if [ -f "id_rsa" ]

@@ -19,6 +19,8 @@
         WEBGUI_SECRET_KEY: "{{ lookup('password', 'webgui.secret length=15') }}"
         WEBGUI_CONF: "SECRET_KEY={{ WEBGUI_SECRET_KEY }}\nPORT=8000\nHOST=0.0.0.0\n"
         CELERY_CONF: "REDIS_HOST=127.0.0.1\nREDIS_PORT=6379\nREDIS_BROKER_DB=1\n"
+        NODEJS_VERSION: "14.5.0"
+        FRONTEND_DIR: "{{ GIT_REPO_DIR }}/frontend"
     tasks:
       - name: Create user
         user:
@@ -75,6 +77,31 @@
           - "full-install"
           - "update"
           - "update-packages"
+      - name: Install N
+        npm:
+          name: n
+          global: yes
+        tags:
+          - "full-install"
+      - name: Update nodejs to {{ NODEJS_VERSION }}
+        shell: "n {{ NODEJS_VERSION }}"
+        tags:
+          - "full-install"
+      - name: Install Yarn
+        npm:
+          name: yarn
+          global: yes
+        tags:
+          - "full-install"
+      - name: Install frontend packages
+        yarn:
+          path: "{{ FRONTEND_DIR }}"
+        become: yes
+        become_user: "{{ USER }}"
+        tags:
+          - "full-install"
+          - "update"
+          - "update-packages"
       - name: Copy service files
         copy: 
           src: "{{ GIT_REPO_DIR }}/installation/{{ item }}.service"
@@ -89,6 +116,7 @@
           - "radflow_ui"
           - "radflow_celery_worker"
           - "radflow_celery_beat"
+          - "radflow_frontend"
         tags:
           - "full-install"
       - name: Enable services for radflow
@@ -219,6 +247,15 @@
           - "full-install"
           - "update"
           - "migrate"
+      - name: Build frontend
+        shell: "yarn build"
+        args:
+          chdir: "{{ FRONTEND_DIR }}"
+        become: yes
+        become_user: "{{ USER }}"
+        tags:
+          - "full-install"
+          - "update"
       - name: Starting a services
         systemd:
           name: "{{ item }}.service"
@@ -233,6 +270,7 @@
           - "radflow_processor"
           - "radflow_celery_worker"
           - "radflow_celery_beat"
+          - "radflow_frontend"
         tags:
           - "full-install"      
       - include: "disposable_tasks.yaml"
@@ -250,6 +288,7 @@
           - "radflow_processor"
           - "radflow_celery_worker"
           - "radflow_celery_beat"
+          - "radflow_frontend"
         tags:
           - "update"
           - "restart-radflow"
