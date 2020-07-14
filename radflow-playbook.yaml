@@ -36,13 +36,13 @@
           create: yes
           state: present
           line: "{{ lookup('pipe', 'ssh-keyscan -t rsa github.com') }}"
-          regexp: "^github\\.com"        
+          regexp: "^github\\.com"
         become: yes
         become_user: "{{ USER }}"
         tags:
           - "full-install"
       - name: Copy ssh key
-        copy: 
+        copy:
           src: "{{ REPO_KEY_NAME }}"
           dest: "{{ HOME_DIR }}/.ssh/id_rsa"
           mode: 0600
@@ -56,6 +56,7 @@
           dest: "{{ GIT_REPO_DIR }}"
           version: "{{ GIT_BRANCH }}"
           key_file: "{{ HOME_DIR }}/.ssh/id_rsa"
+          force: yes
         become: yes
         become_user: "{{ USER }}"
         tags:
@@ -104,7 +105,7 @@
           - "update"
           - "update-packages"
       - name: Copy service files
-        copy: 
+        copy:
           src: "{{ GIT_REPO_DIR }}/installation/{{ item }}.service"
           dest: "/etc/systemd/system/{{ item }}.service"
         with_items:
@@ -134,6 +135,7 @@
           - "radflow_ui"
           - "radflow_celery_worker"
           - "radflow_celery_beat"
+          - "radflow_frontend"
         tags:
           - "full-install"
       - name: Make storage dirs
@@ -219,31 +221,31 @@
         tags:
           - "full-install"
       - name: Configure bookkeeper
-        copy: 
+        copy:
           content: "{{ BOOKEEPER_CONF }}"
           dest: "{{ GIT_REPO_DIR }}/configuration/bookkeeper.env"
         tags:
           - "full-install"
       - name: Configure webgui
-        copy: 
+        copy:
           content: "{{ WEBGUI_CONF }}"
           dest: "{{ GIT_REPO_DIR }}/configuration/webgui.env"
         tags:
           - "full-install"
       - name: Configure celery
-        copy: 
+        copy:
           content: "{{ CELERY_CONF }}"
           dest: "{{ GIT_REPO_DIR }}/configuration/celery.env"
         tags:
           - "full-install"
       - name: Configure frontend
-        copy: 
+        copy:
           content: "{{ FRONTEND_CONF }}"
           dest: "{{ FRONTEND_DIR }}/.env"
         tags:
           - "full-install"
       - name: Migration DB
-        shell: 
+        shell:
           chdir: "{{ GIT_REPO_DIR }}"
           cmd: "{{ PYTHON_ENV_DIR }}/bin/alembic upgrade head"
         environment:
@@ -273,13 +275,13 @@
           - "radflow_cleaner"
           - "radflow_dispatcher"
           - "radflow_receiver"
-          - "radflow_router"          
+          - "radflow_router"
           - "radflow_processor"
           - "radflow_celery_worker"
           - "radflow_celery_beat"
           - "radflow_frontend"
         tags:
-          - "full-install"      
+          - "full-install"
       - include: "disposable_tasks.yaml"
       - name: Re-starting a services
         systemd:
