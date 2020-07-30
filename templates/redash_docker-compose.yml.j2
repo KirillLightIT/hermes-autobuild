@@ -1,0 +1,55 @@
+version: "2"
+x-redash-service: &redash-service
+  image: redash/redash:{{ REDASH_VERSION_REQUEST.stdout }}
+  depends_on:
+    - postgres
+    - redis
+  env_file: {{ REDASH_DIR }}/env
+  restart: always
+services:
+  redash_server:
+    <<: *redash-service
+    command: server
+    ports:
+      - "{{ REDASH_SERVER_PORT }}:5000"
+    environment:
+      REDASH_WEB_WORKERS: 4
+    networks:
+      radflow:
+        ipv4_address: {{ REDASH_SERVER_HOST }}
+  redash_scheduler:
+    <<: *redash-service
+    command: scheduler
+    environment:
+      QUEUES: "celery"
+      WORKERS_COUNT: 1
+    networks:
+      radflow:
+        ipv4_address: {{ REDASH_SCHEDULER_HOST }}
+  redash_scheduled_worker:
+    <<: *redash-service
+    command: worker
+    environment:
+      QUEUES: "scheduled_queries,schemas"
+      WORKERS_COUNT: 1
+    networks:
+      radflow:
+        ipv4_address: {{ REDASH_SCHEDULER_WORKER_HOST }}
+  redash_adhoc_worker:
+    <<: *redash-service
+    command: worker
+    environment:
+      QUEUES: "queries"
+      WORKERS_COUNT: 2
+    networks:
+      radflow:
+        ipv4_address: {{ REDASH_ADHOC_WORKER_HOST }}
+
+
+networks:
+  radflow:
+    driver: bridge
+    ipam:
+     config:
+       - subnet: {{ DOCKER_SUBNET }}
+         gateway: {{ DOCKER_GETWAY }}

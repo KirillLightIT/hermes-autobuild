@@ -3,9 +3,18 @@
 
 TAGS=$@
 
-if [ $TAGS ];
+if [[ -f 'id_rsa' ]]
 then
-	ansible-playbook radflow-playbook.yaml --tags "update-repo,update-packages,migrate,$TAGS,restart-radflow"
+	echo 'Key file found.'
+
+  if [[ "$TAGS" ]];
+  then
+    ansible-playbook radflow-playbook.yaml --tags "update-repo,update-packages,migrate,$TAGS,restart-radflow"
+  else
+    ansible-playbook radflow-playbook.yaml --tags 'update'
+  fi
+
 else
-	ansible-playbook radflow-playbook.yaml --tags "update"
+	echo 'Key file was not found'
+	exit
 fi

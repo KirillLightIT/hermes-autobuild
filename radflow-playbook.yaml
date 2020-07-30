@@ -3,28 +3,69 @@
     hosts: localhost
     connection: local
     vars:
+        DOMAIN_NAME: "radflow.com"
+
         USER: "radflow"
         HOME_DIR: "/home/{{ USER }}"
+
         REPO_KEY_NAME: "id_rsa"
         GIT_REPO_DIR: "{{ HOME_DIR }}/radflow"
         GIT_REPO: "git@github.com:weklica/RT_Hermes.git"
         GIT_BRANCH: "develop"
+
         RADFLOW_UI_PORT: "8000"
-        RADFLOW_BOOKKEEPER_PORT: "8080"
+        RADFLOW_UI_HOST: "127.0.0.1"
+        WEBGUI_SECRET_KEY: "{{ lookup('password', 'webgui.secret length=15') }}"
+
+        RADFLOW_BOOKKEEPER_PORT: "8081"
+        RADFLOW_BOOKKEEPER_HOST: "127.0.0.1"
+
         PYTHON_ENV_DIR: "{{ HOME_DIR }}/radflow-env"
+
+        DOCKER_NETWORK_NAME: "radflow_network"
+        DOCKER_SUBNET: "10.5.0.0/16"
+        DOCKER_GETWAY: "10.5.0.1"
+
+        REDIS_HOST: "10.5.0.5"
+        REDIS_PORT: "6379"
+        REDIS_DB_CELERY: "1"
+        REDIS_DB_REDASH: "2"
+
+        DB_ROOT_PASSWORD: "{{ lookup('password', 'db_root.pswd length=8') }}"
+
+        DB_HOST: "10.5.0.6"
         DB_NAME: "radflow"
         DB_USER: "radflow"
         DB_PASSWORD: "{{ lookup('password', 'db.pswd length=8') }}"
+        DB_URL: "postgresql://{{ DB_USER }}:{{ DB_PASSWORD }}@{{ DB_HOST }}"
+
+        DB_REDASH_HOST: "{{ DB_HOST }}"
+        DB_REDASH_NAME: "redash"
         DB_REDASH_USER: "redash"
         DB_REDASH_PASSWORD: "{{ lookup('password', 'db_redash.pswd length=8') }}"
-        BOOKEEPER_CONF: "PORT={{ RADFLOW_BOOKKEEPER_PORT }}\nHOST=0.0.0.0\nDATABASE_URL=postgresql://{{ DB_USER }}:{{ DB_PASSWORD }}@localhost\n"
-        WEBGUI_SECRET_KEY: "{{ lookup('password', 'webgui.secret length=15') }}"
-        WEBGUI_CONF: "SECRET_KEY={{ WEBGUI_SECRET_KEY }}\nPORT={{ RADFLOW_UI_PORT }}\nHOST=0.0.0.0\n"
-        CELERY_CONF: "REDIS_HOST=127.0.0.1\nREDIS_PORT=6379\nREDIS_BROKER_DB=1\n"
+        DB_REDASH_URL: "postgresql://{{ DB_REDASH_USER }}:{{ DB_REDASH_PASSWORD }}@{{ DB_REDASH_HOST }}/{{ DB_REDASH_NAME }}"
+
         NODEJS_VERSION: "14.5.0"
         FRONTEND_DIR: "{{ GIT_REPO_DIR }}/frontend"
-        FRONTEND_CONF: "REACT_APP_PORT={{ RADFLOW_UI_PORT }}\n"
+
+        REDASH_DIR: "{{ HOME_DIR }}/redash"
+        REDASH_COOKIE_SECRET: "{{ lookup('password', 'redash_cookie.secret length=32') }}"
+        REDASH_SECRET_KEY: "{{ lookup('password', 'redash_key.secret length=32') }}"
+        REDASH_DATABASE_URL: "{{ DB_REDASH_URL }}"
+        REDASH_SERVER_HOST: "10.5.0.7"
+        REDASH_SERVER_PORT: "5000"
+        REDASH_SCHEDULER_HOST: "10.5.0.8"
+        REDASH_SCHEDULER_WORKER_HOST: "10.5.0.9"
+        REDASH_ADHOC_WORKER_HOST: "10.5.0.10"
+
+        REACT_APP_PORT: "443"
     tasks:
+      - name: Check redash version
+        shell: curl -s "https://version.redash.io/api/releases?channel=$REQUESTED_CHANNEL"  | json_pp  | grep "docker_image" | head -n 1 | awk 'BEGIN{FS=":"}{print $3}' | awk 'BEGIN{FS="\""}{print $1}'
+        register: REDASH_VERSION_REQUEST
+        run_once: true
+        tags:
+          - "full-install"
       - name: Create user
         user:
           name: "{{ USER }}"
@@ -120,7 +161,6 @@
           - "radflow_ui"
           - "radflow_celery_worker"
           - "radflow_celery_beat"
-          - "radflow_frontend"
         tags:
           - "full-install"
       - name: Enable services for radflow
@@ -137,7 +177,6 @@
           - "radflow_ui"
           - "radflow_celery_worker"
           - "radflow_celery_beat"
-          - "radflow_frontend"
         tags:
           - "full-install"
       - name: Make storage dirs
@@ -154,15 +193,48 @@
           - "radflow-data/discard"
           - "radflow-data/processing"
           - "radflow-data/studies"
+          - "postgres-data"
         become: yes
         become_user: "{{ USER }}"
         tags:
           - "full-install"
-      - name: Create database
+      - name: Make redash dir
+        file:
+          path: "{{ REDASH_DIR }}"
+          state: directory
+          mode: "0755"
+        become: yes
+        become_user: "{{ USER }}"
+        tags:
+          - "full-install"
+      - name: Configure radflow docker compose
+        template:
+          src: templates/radflow_docker-compose.yml.j2
+          dest: "{{ GIT_REPO_DIR }}/docker-compose.yml"
+          owner: "{{ USER }}"
+          group: "{{ USER }}"
+        tags:
+          - "full-install"
+      - name: Start infra
+        shell:
+          chdir: "{{ REDASH_DIR }}"
+          cmd: "docker-compose -f {{ GIT_REPO_DIR }}/docker-compose.yml up -d"
+        tags:
+          - "full-install"
+      - name: Create radflow database
         postgresql_db:
           name: "{{ DB_NAME }}"
-        become: yes
-        become_user: postgres
+          login_password: "{{ DB_ROOT_PASSWORD }}"
+          login_host: "{{ DB_HOST }}"
+        retries: 3
+        delay: 5
+        tags:
+          - "full-install"
+      - name: Create redash database
+        postgresql_db:
+          name: "{{ DB_REDASH_NAME }}"
+          login_password: "{{ DB_ROOT_PASSWORD }}"
+          login_host: "{{ DB_HOST }}"
         retries: 3
         delay: 5
         tags:
@@ -173,8 +245,16 @@
           name: "{{ DB_USER }}"
           password: "{{ DB_PASSWORD }}"
           priv: "ALL"
+          login_password: "{{ DB_ROOT_PASSWORD }}"
+          login_host: "{{ DB_HOST }}"
+        tags:
+          - "full-install"
+      - name: Save db root password
+        copy:
+          content: "{{ DB_ROOT_PASSWORD }}"
+          dest: "{{ HOME_DIR }}/db_root.pswd"
         become: yes
-        become_user: postgres
+        become_user: "{{ USER }}"
         tags:
           - "full-install"
       - name: Save db password
@@ -189,8 +269,8 @@
         postgresql_user:
           name: "{{ DB_REDASH_USER }}"
           password: "{{ DB_REDASH_PASSWORD }}"
-        become: yes
-        become_user: postgres
+          login_password: "{{ DB_ROOT_PASSWORD }}"
+          login_host: "{{ DB_REDASH_HOST }}"
         tags:
           - "full-install"
       - name: Save redash db password
@@ -201,49 +281,83 @@
         become_user: "{{ USER }}"
         tags:
           - "full-install"
-      - name: Grant all priveleges to database for user radflow
+      - name: Grant all priveleges to radflow database for user radflow
         postgresql_privs:
           db: "{{ DB_NAME }}"
           privs: ALL
           type: database
           role: "{{ DB_USER }}"
-        become: yes
-        become_user: postgres
+          login_password: "{{ DB_ROOT_PASSWORD }}"
+          login_host: "{{ DB_HOST }}"
         tags:
           - "full-install"
-      - name: Grant select priveleges to database for user redash
+      - name: Grant select priveleges to radflow database for user redash
         postgresql_privs:
           db: "{{ DB_NAME }}"
           privs: "SELECT"
-          type: table
+          type: schema
           objs: ALL_IN_SCHEMA
           role: "{{ DB_REDASH_USER }}"
-        become: yes
-        become_user: postgres
+          login_password: "{{ DB_ROOT_PASSWORD }}"
+          login_host: "{{ DB_HOST }}"
+        tags:
+          - "full-install"
+      - name: Grant all priveleges to redash database for user redash
+        postgresql_privs:
+          db: "{{ DB_REDASH_NAME }}"
+          privs: ALL
+          type: database
+          role: "{{ DB_REDASH_USER }}"
+          login_password: "{{ DB_ROOT_PASSWORD }}"
+          login_host: "{{ DB_HOST }}"
         tags:
           - "full-install"
       - name: Configure bookkeeper
-        copy:
-          content: "{{ BOOKEEPER_CONF }}"
+        template:
+          src: templates/bookkeeper.env.j2
           dest: "{{ GIT_REPO_DIR }}/configuration/bookkeeper.env"
+          owner: "{{ USER }}"
+          group: "{{ USER }}"
         tags:
           - "full-install"
       - name: Configure webgui
-        copy:
-          content: "{{ WEBGUI_CONF }}"
+        template:
+          src: templates/webgui.env.j2
           dest: "{{ GIT_REPO_DIR }}/configuration/webgui.env"
+          owner: "{{ USER }}"
+          group: "{{ USER }}"
         tags:
           - "full-install"
       - name: Configure celery
-        copy:
-          content: "{{ CELERY_CONF }}"
+        template:
+          src: templates/celery.env.j2
           dest: "{{ GIT_REPO_DIR }}/configuration/celery.env"
+          owner: "{{ USER }}"
+          group: "{{ USER }}"
         tags:
           - "full-install"
       - name: Configure frontend
-        copy:
-          content: "{{ FRONTEND_CONF }}"
+        template:
+          src: templates/frontend.env.j2
           dest: "{{ FRONTEND_DIR }}/.env"
+          owner: "{{ USER }}"
+          group: "{{ USER }}"
+        tags:
+          - "full-install"
+      - name: Configure redash
+        template:
+          src: templates/redash.env.j2
+          dest: "{{ REDASH_DIR }}/env"
+          owner: "{{ USER }}"
+          group: "{{ USER }}"
+        tags:
+          - "full-install"
+      - name: Configure redash docker compose
+        template:
+          src: templates/redash_docker-compose.yml.j2
+          dest: "{{ REDASH_DIR }}/docker-compose.yml"
+          owner: "{{ USER }}"
+          group: "{{ USER }}"
         tags:
           - "full-install"
       - name: Migration DB
@@ -258,6 +372,18 @@
           - "full-install"
           - "update"
           - "migrate"
+      - name: Migration DB redash
+        shell:
+          chdir: "{{ REDASH_DIR }}"
+          cmd: "docker-compose -f {{ GIT_REPO_DIR }}/docker-compose.yml -f docker-compose.yml run --rm server create_db"
+        tags:
+          - "full-install"
+      - name: Start Redash
+        shell:
+          chdir: "{{ REDASH_DIR }}"
+          cmd: "docker-compose -f {{ GIT_REPO_DIR }}/docker-compose.yml -f docker-compose.yml up -d"
+        tags:
+          - "full-install"
       - name: Build frontend
         shell: "yarn build"
         args:
@@ -281,7 +407,6 @@
           - "radflow_processor"
           - "radflow_celery_worker"
           - "radflow_celery_beat"
-          - "radflow_frontend"
         tags:
           - "full-install"
       - include: "disposable_tasks.yaml"
@@ -299,19 +424,35 @@
           - "radflow_processor"
           - "radflow_celery_worker"
           - "radflow_celery_beat"
-          - "radflow_frontend"
         tags:
           - "update"
           - "restart-radflow"
-      - name: Download redash install script
-        get_url:
-          url: "https://raw.githubusercontent.com/getredash/setup/master/setup.sh"
-          dest: "{{ HOME_DIR }}/setup.sh"
-        become: yes
-        become_user: "{{ USER }}"
+      - name: Remove default NGINX configurations
+        file:
+          path: "/etc/nginx/{{ item }}/default"
+          state: absent
+        with_items:
+          - "sites-available"
+          - "sites-enabled"
         tags:
           - "full-install"
-      - name: Install redash
-        shell: cd "{{ HOME_DIR }}" && /bin/bash setup.sh
+      - name: Configure NGINX
+        template:
+          src: templates/nginx.conf.j2
+          dest: "/etc/nginx/conf.d/default.conf"
+        tags:
+          - "full-install"
+      - name: Configure NGINX SSL certification
+        shell: "certbot --nginx -n --domain {{ DOMAIN_NAME }}"
+        tags:
+          - "full-install"
+      - name: Setup autorenew NGINX SSL certificate
+        cron:
+          name: "certbot_renew"
+          job: "certbot --nginx renew > /dev/null"
+          minute: "0"
+          hour: "0"
+          day: "1"
+          month: "*/1"
         tags:
           - "full-install"

@@ -1,0 +1,34 @@
+version: "2"
+
+services:
+
+  redis:
+    image: redis:latest
+    restart: always
+    ports:
+      - "{{ REDIS_PORT }}:6379"
+    networks:
+      radflow:
+        ipv4_address: {{ REDIS_HOST }}
+
+  postgres:
+    image: postgres:9.6-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - "POSTGRES_PASSWORD={{ DB_ROOT_PASSWORD }}"
+    volumes:
+      - /home/radflow/postgres-data:/var/lib/postgresql/data
+    restart: always
+    networks:
+      radflow:
+        ipv4_address: {{ DB_HOST }}
+
+
+networks:
+  radflow:
+    driver: bridge
+    ipam:
+     config:
+       - subnet: {{ DOCKER_SUBNET }}
+         gateway: {{ DOCKER_GETWAY }}
